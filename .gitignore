@@ -4,3 +4,4 @@ __pycache__/
 .env
 *.pem
 *.key
+How-to-load-git.md

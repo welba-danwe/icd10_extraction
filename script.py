@@ -1,15 +1,12 @@
 from __future__ import annotations
-
 import argparse
 import csv
 import sys
 import unicodedata
 from pathlib import Path
-
 from openpyxl import load_workbook
 
-
-def normalize_header(value: object) -> str:
+def header_treatment(value: object) -> str:
     if value is None:
         return ""
     text = str(value).strip().lower()
@@ -19,13 +16,13 @@ def normalize_header(value: object) -> str:
     return text
 
 
-def clean_cell(value: object) -> str:
+def clean_column(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip()
 
 
-def choose_sheet(workbook, requested_sheet: str | None):
+def choose_set(workbook, requested_sheet: str | None):
     if requested_sheet:
         if requested_sheet not in workbook.sheetnames:
             raise ValueError(
@@ -34,28 +31,26 @@ def choose_sheet(workbook, requested_sheet: str | None):
             )
         return workbook[requested_sheet]
 
-    # Priorité à la première feuille contenant les colonnes attendues
     for name in workbook.sheetnames:
         ws = workbook[name]
         first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
         if not first_row:
             continue
-        headers = {normalize_header(v) for v in first_row if v is not None}
+        headers = {header_treatment(v) for v in first_row if v is not None}
         if {"code", "label fr", "parent immediat"}.issubset(headers):
             return ws
-
-    # Fallback : feuille active
+            
     return workbook[workbook.sheetnames[0]]
 
 
 def extract_header_map(worksheet) -> dict[str, int]:
     first_row = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
     if not first_row:
-        raise ValueError("Le fichier Excel est vide ou ne contient pas d'en-tête.")
+        raise ValueError("The excel file is empty")
 
     header_map: dict[str, int] = {}
     for idx, value in enumerate(first_row):
-        norm = normalize_header(value)
+        norm = header_treatment(value)
         if norm:
             header_map[norm] = idx
 
@@ -63,9 +58,9 @@ def extract_header_map(worksheet) -> dict[str, int]:
     missing = [col for col in required if col not in header_map]
     if missing:
         raise ValueError(
-            "Colonnes obligatoires introuvables : "
+            "Column absent : "
             + ", ".join(missing)
-            + f". Colonnes détectées : {', '.join(header_map.keys())}"
+            + f". Column detected : {', '.join(header_map.keys())}"
         )
 
     return header_map
@@ -74,7 +69,7 @@ def extract_header_map(worksheet) -> dict[str, int]:
 def iter_useful_rows(xlsx_path: Path, sheet_name: str | None = None):
     wb = load_workbook(filename=xlsx_path, read_only=True, data_only=True)
     try:
-        ws = choose_sheet(wb, sheet_name)
+        ws = choose_set(wb, sheet_name)
         header_map = extract_header_map(ws)
 
         code_idx = header_map["code"]
@@ -82,11 +77,10 @@ def iter_useful_rows(xlsx_path: Path, sheet_name: str | None = None):
         parent_idx = header_map["parent immediat"]
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            code = clean_cell(row[code_idx] if code_idx < len(row) else None)
-            label = clean_cell(row[label_idx] if label_idx < len(row) else None)
-            parent = clean_cell(row[parent_idx] if parent_idx < len(row) else None)
-
-            # On ignore les lignes totalement vides ou sans code
+            code = clean_column(row[code_idx] if code_idx < len(row) else None)
+            label = clean_column(row[label_idx] if label_idx < len(row) else None)
+            parent = clean_column(row[parent_idx] if parent_idx < len(row) else None)
+            
             if not code:
                 continue
 
@@ -112,27 +106,27 @@ def write_csv(rows, output_csv: Path) -> int:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Extrait depuis un fichier Excel CIM-10 une table CSV : code;label;parent"
+        description="..."
     )
     parser.add_argument(
         "--input",
         required=True,
-        help="Chemin du fichier Excel source (.xlsx)",
+        help="...",
     )
     parser.add_argument(
         "--output-dir",
         required=True,
-        help="Dossier de sortie du CSV",
+        help="...",
     )
     parser.add_argument(
         "--output-name",
         default="cim10_hierarchie.csv",
-        help="Nom du fichier CSV de sortie (défaut: cim10_hierarchie.csv)",
+        help="...",
     )
     parser.add_argument(
         "--sheet",
         default=None,
-        help="Nom exact de la feuille à lire. Si absent, détection automatique.",
+        help="...",
     )
     return parser.parse_args()
 
@@ -145,17 +139,17 @@ def main():
     output_csv = output_dir / args.output_name
 
     if not input_path.exists():
-        raise FileNotFoundError(f"Fichier introuvable : {input_path}")
+        raise FileNotFoundError(f"Not found : {input_path}")
 
     if input_path.suffix.lower() != ".xlsx":
-        raise ValueError(f"Le fichier d'entrée doit être un .xlsx : {input_path}")
+        raise ValueError(f"Need to be an .xlsx : {input_path}")
 
     rows = iter_useful_rows(input_path, args.sheet)
     count = write_csv(rows, output_csv)
 
-    print(f"Fichier source : {input_path}")
-    print(f"Fichier produit : {output_csv}")
-    print(f"Lignes écrites : {count}")
+    print(f"Source : {input_path}")
+    print(f"Output : {output_csv}")
+    print(f"Lines : {count}")
 
 
 if __name__ == "__main__":
